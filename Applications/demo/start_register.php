@@ -1,6 +1,6 @@
 <?php
 
-use Telepathy\Register;
+use Eywa\Register;
 
-//Æô¶¯×¢²áÖÐÐÄ
+//å¯åŠ¨æ³¨å†Œä¸­å¿ƒ
 $gateway = new Register('text://127.0.0.1:1236');

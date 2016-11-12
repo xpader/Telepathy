@@ -6,7 +6,7 @@
  * Time: 12:24
  */
 
-namespace Telepathy;
+namespace Eywa;
 
 use Workerman\Lib\Timer;
 use Workerman\Worker;
@@ -64,6 +64,7 @@ class Register extends Worker {
 		$secretKey = $data['secret_key'];
 
 		switch ($event) {
+			//当 Gateway 连接上来时,注册 Gateway 并广播给所有 Workers
 			case 'gateway_connect':
 				if (empty($data['address'])) {
 					echo "address not found\n";
@@ -81,6 +82,7 @@ class Register extends Worker {
 				$this->broadcastAddresses();
 				break;
 
+			//当 Worker 连接上来时,注册 Worker 并向将所有 Gateway 地址发给这个 Worker
 			case 'worker_connect':
 				if ($secretKey !== $this->secretKey) {
 					echo "Register: Key does not match $secretKey !== {$this->secretKey}\n";
@@ -102,6 +104,8 @@ class Register extends Worker {
 	}
 
 	/**
+	 * 当 Gateway 或 Worker 断开连接时移除相关资源
+	 * 
 	 * @param \Workerman\Connection\TcpConnection $connection
 	 */
 	public function onClose($connection) {
@@ -115,14 +119,14 @@ class Register extends Worker {
 	}
 
 	/**
-	 * �� BusinessWorker �㲥 gateway �ڲ�ͨѶ��ַ
+	 * 向 BusinessWorker 广播 gateway 内部通讯地址
 	 *
 	 * @param \Workerman\Connection\TcpConnection $connection
 	 */
 	public function broadcastAddresses($connection = null)
 	{
 		$data = [
-			'event' => 'broadcast_addresses',
+			'event' => 'update_gateway_addresses',
 			'addresses' => array_unique(array_values($this->gatewayConnections)),
 		];
 

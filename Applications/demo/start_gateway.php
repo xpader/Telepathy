@@ -1,7 +1,7 @@
 <?php
 
-use Telepathy\Gateway;
+use Eywa\Gateway;
 
-//Æô¶¯Íø¹Ø
+//å¯åŠ¨ç½‘å…³
 $gateway = new Gateway('tcp://127.0.0.1:2001');
 $gateway->registerAddress = '127.0.0.1:1236';

@@ -2,7 +2,7 @@
 /**
  * from https://github.com/walkor/GlobalData
  */
-namespace Telepathy\GlobalData;
+namespace Eywa\Data;
 
 use Workerman\Worker;
 
@@ -30,7 +30,7 @@ class Server
 	{
 		$worker = new Worker("frame://$ip:$port");
 		$worker->count = 1;
-		$worker->name = 'globalDataServer';
+		$worker->name = 'DataServer';
 		$worker->onMessage = array($this, 'onMessage');
 		$worker->reloadable = false;
 		$this->_worker = $worker;

@@ -2,7 +2,7 @@
 /**
  * from https://github.com/walkor/GlobalData
  */
-namespace Telepathy\GlobalData;
+namespace Eywa\Data;
 
 /**
  *  Global data client.

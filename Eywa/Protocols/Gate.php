@@ -11,15 +11,15 @@
  * @link      http://www.workerman.net/
  * @license   http://www.opensource.org/licenses/mit-license.php MIT License
  */
-namespace Telepathy\Protocols;
+namespace Eywa\Protocols;
 
 /**
- * Gateway Óë Worker ¼äÍ¨Ñ¶µÄ¶ş½øÖÆĞ­Òé
+ * Gateway ä¸ Worker é—´é€šè®¯çš„äºŒè¿›åˆ¶åè®®
  *
  * struct GatewayProtocol
  * {
  *     unsigned int        pack_len,
- *     unsigned char       cmd,//ÃüÁî×Ö
+ *     unsigned char       cmd,//å‘½ä»¤å­—
  *     unsigned int        local_ip,
  *     unsigned short      local_port,
  *     unsigned int        client_ip,
@@ -29,89 +29,89 @@ namespace Telepathy\Protocols;
  *     unsigned short      gateway_port,
  *     unsigned int        ext_len,
  *     char[ext_len]       ext_data,
- *     char[pack_length-HEAD_LEN] body//°üÌå
+ *     char[pack_length-HEAD_LEN] body//åŒ…ä½“
  * }
  * NCNnNnNCnN
  */
 class Gate
 {
-	// ·¢¸øworker£¬gatewayÓĞÒ»¸öĞÂµÄÁ¬½Ó
+	// å‘ç»™workerï¼Œgatewayæœ‰ä¸€ä¸ªæ–°çš„è¿æ¥
 	const CMD_ON_CONNECTION = 1;
 
-	// ·¢¸øworkerµÄ£¬¿Í»§¶ËÓĞÏûÏ¢
+	// å‘ç»™workerçš„ï¼Œå®¢æˆ·ç«¯æœ‰æ¶ˆæ¯
 	const CMD_ON_MESSAGE = 3;
 
-	// ·¢¸øworkerÉÏµÄ¹Ø±ÕÁ´½ÓÊÂ¼ş
+	// å‘ç»™workerä¸Šçš„å…³é—­é“¾æ¥äº‹ä»¶
 	const CMD_ON_CLOSE = 4;
 
-	// ·¢¸øgatewayµÄÏòµ¥¸öÓÃ»§·¢ËÍÊı¾İ
+	// å‘ç»™gatewayçš„å‘å•ä¸ªç”¨æˆ·å‘é€æ•°æ®
 	const CMD_SEND_TO_ONE = 5;
 
-	// ·¢¸øgatewayµÄÏòËùÓĞÓÃ»§·¢ËÍÊı¾İ
+	// å‘ç»™gatewayçš„å‘æ‰€æœ‰ç”¨æˆ·å‘é€æ•°æ®
 	const CMD_SEND_TO_ALL = 6;
 
-	// ·¢¸øgatewayµÄÌß³öÓÃ»§
+	// å‘ç»™gatewayçš„è¸¢å‡ºç”¨æˆ·
 	const CMD_KICK = 7;
 
-	// ·¢¸øgateway£¬Í¨ÖªÓÃ»§session¸üĞÂ
+	// å‘ç»™gatewayï¼Œé€šçŸ¥ç”¨æˆ·sessionæ›´æ–°
 	const CMD_UPDATE_SESSION = 9;
 
-	// »ñÈ¡ÔÚÏß×´Ì¬
+	// è·å–åœ¨çº¿çŠ¶æ€
 	const CMD_GET_ALL_CLIENT_INFO = 10;
 
-	// ÅĞ¶ÏÊÇ·ñÔÚÏß
+	// åˆ¤æ–­æ˜¯å¦åœ¨çº¿
 	const CMD_IS_ONLINE = 11;
 
-	// client_id°ó¶¨µ½uid
+	// client_idç»‘å®šåˆ°uid
 	const CMD_BIND_UID = 12;
 
-	// ½â°ó
+	// è§£ç»‘
 	const CMD_UNBIND_UID = 13;
 
-	// Ïòuid·¢ËÍÊı¾İ
+	// å‘uidå‘é€æ•°æ®
 	const CMD_SEND_TO_UID = 14;
 
-	// ¸ù¾İuid»ñÈ¡°ó¶¨µÄclientid
+	// æ ¹æ®uidè·å–ç»‘å®šçš„clientid
 	const CMD_GET_CLIENT_ID_BY_UID = 15;
 
-	// ¼ÓÈë×é
+	// åŠ å…¥ç»„
 	const CMD_JOIN_GROUP = 20;
 
-	// Àë¿ª×é
+	// ç¦»å¼€ç»„
 	const CMD_LEAVE_GROUP = 21;
 
-	// Ïò×é³ÉÔ±·¢ÏûÏ¢
+	// å‘ç»„æˆå‘˜å‘æ¶ˆæ¯
 	const CMD_SEND_TO_GROUP = 22;
 
-	// »ñÈ¡×é³ÉÔ±
+	// è·å–ç»„æˆå‘˜
 	const CMD_GET_CLINET_INFO_BY_GROUP = 23;
 
-	// »ñÈ¡×é³ÉÔ±Êı
+	// è·å–ç»„æˆå‘˜æ•°
 	const CMD_GET_CLIENT_COUNT_BY_GROUP = 24;
 
-	// workerÁ¬½ÓgatewayÊÂ¼ş
+	// workerè¿æ¥gatewayäº‹ä»¶
 	const CMD_WORKER_CONNECT = 200;
 
-	// ĞÄÌø
+	// å¿ƒè·³
 	const CMD_PING = 201;
 
-	// GatewayClientÁ¬½ÓgatewayÊÂ¼ş
+	// GatewayClientè¿æ¥gatewayäº‹ä»¶
 	const CMD_GATEWAY_CLIENT_CONNECT = 202;
 
-	// ¸ù¾İclient_id»ñÈ¡session
+	// æ ¹æ®client_idè·å–session
 	const CMD_GET_SESSION_BY_CLIENT_ID = 203;
 
-	// ·¢¸øgateway£¬¸²¸Çsession
+	// å‘ç»™gatewayï¼Œè¦†ç›–session
 	const CMD_SET_SESSION = 204;
 
-	// °üÌåÊÇ±êÁ¿
+	// åŒ…ä½“æ˜¯æ ‡é‡
 	const FLAG_BODY_IS_SCALAR = 0x01;
 
-	// Í¨ÖªgatewayÔÚsendÊ±²»µ÷ÓÃĞ­Òéencode·½·¨£¬ÔÚ¹ã²¥×é²¥Ê±ÌáÉıĞÔÄÜ
+	// é€šçŸ¥gatewayåœ¨sendæ—¶ä¸è°ƒç”¨åè®®encodeæ–¹æ³•ï¼Œåœ¨å¹¿æ’­ç»„æ’­æ—¶æå‡æ€§èƒ½
 	const FLAG_NOT_CALL_ENCODE = 0x02;
 
 	/**
-	 * °üÍ·³¤¶È
+	 * åŒ…å¤´é•¿åº¦
 	 *
 	 * @var int
 	 */
@@ -131,7 +131,7 @@ class Gate
 	);
 
 	/**
-	 * ·µ»Ø°ü³¤¶È
+	 * è¿”å›åŒ…é•¿åº¦
 	 *
 	 * @param string $buffer
 	 * @return int return current package length
@@ -147,7 +147,7 @@ class Gate
 	}
 
 	/**
-	 * »ñÈ¡Õû¸ö°üµÄ buffer
+	 * è·å–æ•´ä¸ªåŒ…çš„ buffer
 	 *
 	 * @param mixed $data
 	 * @return string
@@ -170,7 +170,7 @@ class Gate
 	}
 
 	/**
-	 * ´Ó¶ş½øÖÆÊı¾İ×ª»»ÎªÊı×é
+	 * ä»äºŒè¿›åˆ¶æ•°æ®è½¬æ¢ä¸ºæ•°ç»„
 	 *
 	 * @param string $buffer
 	 * @return array
