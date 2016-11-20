@@ -30,7 +30,10 @@ class Register extends Worker {
 		$this->onClose = [$this, 'onClose'];
 		$this->onMessage = [$this, 'onMessage'];
 		$this->startTime = time();
+
+		//强制 Text 协议
 		$this->protocol = '\Workerman\Protocols\Text';
+
 		parent::run();
 	}
 
@@ -101,6 +104,9 @@ class Register extends Worker {
 				echo "Register unknown event:$event IP: ".$connection->getRemoteIp()." Raw:$raw. See http://wiki.workerman.net/Error4\n";
 				$connection->close();
 		}
+
+		print_r(array_keys($this->workerConnections));
+		print_r($this->gatewayConnections);
 	}
 
 	/**

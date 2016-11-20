@@ -23,6 +23,8 @@ class EywaWorker extends Worker {
 	public $registerAddress = '127.0.0.1:1236';
 	public $secretKey = '';
 
+	public $name = 'EywaWorker';
+
 	public $_onWorkerStart = null;
 	public $_onWorkerReload = null;
 	public $_onWorkerStop = null;
@@ -113,9 +115,7 @@ class EywaWorker extends Worker {
 			return;
 		}
 
-		$event = $data['event'];
-
-		switch ($event) {
+		switch ($data['event']) {
 			case 'update_gateway_addresses':
 
 				if (!is_array($data['addresses'])) {
@@ -132,7 +132,7 @@ class EywaWorker extends Worker {
 				//$this->checkGatewayConnections($data['addresses']);
 				break;
 			default:
-				echo "Receive bad event:$event from Register.\n";
+				echo "Received unknow event:{$data['event']} from Register.\n";
 		}
 	}
 

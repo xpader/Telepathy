@@ -45,7 +45,7 @@ class Gateway extends Worker {
 	public function __construct($socketName, $contextOption=[]) {
 		parent::__construct($socketName, $contextOption);
 
-		$this->gatewayPort = substr(strrchr($socketName,':'),1);
+		$this->gatewayPort = substr(strrchr($socketName,':'), 1);
 	}
 
 	public function run() {

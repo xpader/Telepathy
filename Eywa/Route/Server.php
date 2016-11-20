@@ -2,7 +2,7 @@
 /**
  * from https://github.com/walkor/GlobalData
  */
-namespace Eywa\Data;
+namespace Eywa\Route;
 
 use Workerman\Worker;
 
