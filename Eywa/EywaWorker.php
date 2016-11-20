@@ -56,8 +56,9 @@ class EywaWorker extends Worker {
 		$this->_onWorkerStart  = $this->onWorkerStart;
 		$this->_onWorkerReload = $this->onWorkerReload;
 		$this->_onWorkerStop = $this->onWorkerStop;
-		$this->onWorkerStart   = array($this, 'onWorkerStart');
-		$this->onWorkerReload  = array($this, 'onWorkerReload');
+		$this->onWorkerStart   = [$this, 'onWorkerStart'];
+		$this->onWorkerReload  = [$this, 'onWorkerReload'];
+		$this->onWorkerStop = [$this, 'onWorkerStop'];
 		parent::run();
 	}
 
@@ -77,6 +78,12 @@ class EywaWorker extends Worker {
 		// 如果Register服务器不在本地服务器，则需要保持心跳
 		if (strpos($this->registerAddress, '127.0.0.1') !== 0) {
 			Timer::add(self::PERSISTENCE_CONNECTION_PING_INTERVAL, array($this, 'pingRegister'));
+		}
+	}
+
+	public function onWorkerStop() {
+		if (is_callable($this->_onWorkerStop)) {
+			call_user_func($this->_onWorkerStop, $this);
 		}
 	}
 
@@ -129,7 +136,7 @@ class EywaWorker extends Worker {
 					$this->gatewayAddresses[$addr] = 1;
 				}
 
-				//$this->checkGatewayConnections($data['addresses']);
+				$this->checkGatewayConnections($data['addresses']);
 				break;
 			default:
 				echo "Received unknow event:{$data['event']} from Register.\n";

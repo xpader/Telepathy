@@ -19,7 +19,7 @@ class Register extends Worker {
 
 	protected $gatewayConnections = [];
 	protected $workerConnections = [];
-	protected $dataConnections = [];
+	protected $routerConnections = [];
 	protected $startTime = 0;
 
 	const TYPE_GATEWAY = 0;
@@ -105,8 +105,9 @@ class Register extends Worker {
 				$connection->close();
 		}
 
-		print_r(array_keys($this->workerConnections));
-		print_r($this->gatewayConnections);
+		echo $raw."\n";
+		echo 'Workers: '.join(',', array_keys($this->workerConnections))."\n";
+		echo 'Gateway: '.join(',', $this->gatewayConnections);
 	}
 
 	/**

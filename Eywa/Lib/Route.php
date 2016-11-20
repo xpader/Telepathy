@@ -2,13 +2,13 @@
 /**
  * from https://github.com/walkor/GlobalData
  */
-namespace Eywa\Route;
+namespace Eywa\Lib;
 
 /**
  *  Global data client.
  *  @version 1.0.1
  */
-class Client
+class Route
 {
 	/**
 	 * Timeout.

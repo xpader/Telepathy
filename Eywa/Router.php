@@ -2,14 +2,14 @@
 /**
  * from https://github.com/walkor/GlobalData
  */
-namespace Eywa\Route;
+namespace Eywa;
 
 use Workerman\Worker;
 
 /**
  * Global data server.
  */
-class Server
+class Router
 {
 	/**
 	 * Worker instance.
@@ -30,7 +30,7 @@ class Server
 	{
 		$worker = new Worker("frame://$ip:$port");
 		$worker->count = 1;
-		$worker->name = 'DataServer';
+		$worker->name = 'Router';
 		$worker->onMessage = array($this, 'onMessage');
 		$worker->reloadable = false;
 		$this->_worker = $worker;
