@@ -11,6 +11,7 @@ use Workerman\Worker;
 require_once __DIR__ . '/../../Workerman/Autoloader.php';
 
 $router = new Router('127.0.0.1', 2999);
+$router->registerAddress = '127.0.0.1:1236';
 
 if (!defined('GLOBAL_START')) {
 	Worker::runAll();
