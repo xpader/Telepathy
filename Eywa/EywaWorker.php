@@ -8,6 +8,7 @@
 
 namespace Eywa;
 
+use Eywa\Lib\Context;
 use Eywa\Protocols\Gate;
 use Workerman\Connection\AsyncTcpConnection;
 use Workerman\Connection\TcpConnection;
@@ -48,14 +49,14 @@ class EywaWorker extends Worker {
 	 *
 	 * @var array
 	 */
-	protected $connectingGatewayAddresses = array();
+	protected $connectingGatewayAddresses = [];
 
 	/**
 	 * 等待连接个 gateway 地址
 	 *
 	 * @var array
 	 */
-	protected $waitingConnectGatewayAddresses = array();
+	protected $waitingConnectGatewayAddresses = [];
 
 	/**
 	 * 用于保持长连接的心跳时间间隔
@@ -149,7 +150,69 @@ class EywaWorker extends Worker {
 			return;
 		}
 
-		//Todo: here
+		//上下文数据
+		Context::$client_ip     = $data['client_ip'];
+		Context::$client_port   = $data['client_port'];
+		Context::$local_ip      = $data['local_ip'];
+		Context::$local_port    = $data['local_port'];
+		Context::$connection_id = $data['connection_id'];
+		Context::$client_id     = Context::addressToClientId($data['local_ip'], $data['local_port'], $data['connection_id']);
+
+		$_SERVER = array(
+			'REMOTE_ADDR'       => long2ip($data['client_ip']),
+			'REMOTE_PORT'       => $data['client_port'],
+			'GATEWAY_ADDR'      => long2ip($data['local_ip']),
+			'GATEWAY_PORT'      => $data['gateway_port'],
+			'GATEWAY_CLIENT_ID' => Context::$client_id,
+		);
+
+		//调用业务回调
+		//注意 EywaWorker 的 onConnect, onMessage, onClose 代表的是客户端连接，消息和连接关闭事件
+		switch ($cmd) {
+			case Gate::CMD_ON_CONNECTION:
+				if (is_callable($this->onConnect)) {
+					call_user_func($this->onConnect, Context::$client_id);
+				}
+				break;
+			case Gate::CMD_ON_MESSAGE:
+				if (is_callable($this->onMessage)) {
+					call_user_func($this->onMessage, Context::$client_id, $data['body']);
+				}
+				break;
+			case Gate::CMD_ON_CLOSE:
+				if (is_callable($this->onClose)) {
+					call_user_func($this->onClose, Context::$client_id);
+				}
+				break;
+		}
+	}
+
+	/**
+	 * 当与 Gateway 的连接断开时触发
+	 *
+	 * @param TcpConnection $connection
+	 * @return  void
+	 */
+	public function onGatewayClose($connection) {
+		$addr = $connection->remoteAddress;
+
+		unset($this->gatewayConnections[$addr], $this->connectingGatewayAddresses[$addr]);
+
+		if (isset($this->gatewayAddresses[$addr]) && !isset($this->waitingConnectGatewayAddresses[$addr])) {
+			Timer::add(1, [$this, 'connectGateway'], [$addr], false);
+			$this->waitingConnectGatewayAddresses[$addr] = 1;
+		}
+	}
+
+	/**
+	 * 当与 gateway 的连接出现错误时触发
+	 *
+	 * @param TcpConnection $connection
+	 * @param int $errorNo
+	 * @param string $errorMsg
+	 */
+	public function onGatewayError($connection, $errorNo, $errorMsg) {
+		echo "GatewayConnection Error: $errorNo, $errorMsg\n";
 	}
 
 	/**
@@ -208,6 +271,8 @@ class EywaWorker extends Worker {
 			default:
 				echo "Received unknow event:{$data['event']} from Register.\n";
 		}
+
+		echo "Worker {$this->id} onRegisterMessage:".join(',', $data['addresses'])."\n---------\n";
 	}
 
 	/**
@@ -217,6 +282,42 @@ class EywaWorker extends Worker {
 		if ($this->registerConnection) {
 			$this->registerConnection->send(serialize(['event'=>'ping']));
 		}
+	}
+
+	/**
+	 * 尝试连接 Gateway 内部通讯地址
+	 *
+	 * @param string $addr
+	 */
+	public function connectGateway($addr)
+	{
+		if (!isset($this->gatewayConnections[$addr]) && !isset($this->connectingGatewayAddresses[$addr]) && isset($this->gatewayAddresses[$addr])) {
+			echo "Worker {$this->id} connectGateway: $addr\n--------------\n";
+			$gatewayConnection = new AsyncTcpConnection("Gate://$addr");
+			$gatewayConnection->remoteAddress = $addr;
+			$gatewayConnection->onConnect     = [$this, 'onGatewayConnected'];
+			$gatewayConnection->onMessage     = [$this, 'onGatewayMessage'];
+			$gatewayConnection->onClose       = [$this, 'onGatewayClose'];
+			$gatewayConnection->onError       = [$this, 'onGatewayError'];
+
+			if (TcpConnection::$defaultMaxSendBufferSize == $gatewayConnection->maxSendBufferSize) {
+				$gatewayConnection->maxSendBufferSize = 50 * 1024 * 1024;
+			}
+
+			$gatewayData = Gate::$empty;
+			$gatewayData['cmd'] = Gate::CMD_WORKER_CONNECT;
+			$gatewayData['body'] = json_encode([
+				'worker_key' => "{$this->name}:{$this->id}",
+				'secret_key' => $this->secretKey,
+			]);
+
+			$gatewayConnection->send($gatewayData);
+			$gatewayConnection->connect();
+
+			$this->connectingGatewayAddresses[$addr] = 1;
+		}
+
+		unset($this->waitingConnectGatewayAddresses[$addr]);
 	}
 
 	/**
@@ -232,9 +333,9 @@ class EywaWorker extends Worker {
 		}
 
 		foreach ($addresses as $addr) {
-			//if (!isset($this->_waitingConnectGatewayAddresses[$addr])) {
-			//	$this->tryToConnectGateway($addr);
-			//}
+			if (!isset($this->waitingConnectGatewayAddresses[$addr])) {
+				$this->connectGateway($addr);
+			}
 		}
 	}
 

@@ -105,9 +105,9 @@ class Register extends Worker {
 				$connection->close();
 		}
 
-		echo $raw."\n";
-		echo 'Workers: '.join(',', array_keys($this->workerConnections))."\n";
-		echo 'Gateway: '.join(',', $this->gatewayConnections);
+//		echo 'Register onMessage: '.$raw."\n";
+//		echo 'Workers: '.join(',', array_keys($this->workerConnections))."\n";
+//		echo 'Gateway: '.join(',', $this->gatewayConnections)."\n---------------\n";
 	}
 
 	/**

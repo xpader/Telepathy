@@ -139,9 +139,31 @@ class Gateway extends Worker {
 
 	/**
 	 * Worker 发来消息时
+	 *
+	 * @param TcpConnection $connection
+	 * @param mixed $data
 	 */
-	public function onWorkerMessage() {
+	public function onWorkerMessage($connection, $data) {
+		if (empty($connection->authorized) && $data['cmd'] !== Gate::CMD_WORKER_CONNECT
+				&& $data['cmd'] !== Gate::CMD_GATEWAY_CLIENT_CONNECT) {
+			echo "Unauthorized request from " . $connection->getRemoteIp() . ":" . $connection->getRemotePort() . "\n";
+			$connection->close();
+			return;
+		}
 
+		switch ($data['cmd']) {
+			//业务进程连接Gateway
+			case Gate::CMD_WORKER_CONNECT:
+				$workerInfo = json_decode($data['body'], true);
+				if ($workerInfo['secret_key'] !== $this->secretKey) {
+					echo "Gateway: Worker key does not match {$this->secretKey} !== {$this->secretKey}\n";
+					return $connection->close();
+				}
+				$connection->key = $connection->getRemoteIp() . ':' . $workerInfo['worker_key'];
+				$this->workerConnections[$connection->key] = $connection;
+				$connection->authorized = true;
+				return;
+		}
 	}
 
 	/**
@@ -234,7 +256,7 @@ class Gateway extends Worker {
 	protected function toWorker($cmd, $connection, $data='') {
 		$gatewayData = $connection->gatewayHeader;
 		$gatewayData['cmd'] = $cmd;
-		$gatewayData['data'] = $data;
+		$gatewayData['body'] = $data;
 		$gatewayData['ext_data'] = '';
 
 		if ($this->workerConnections) {
@@ -295,10 +317,10 @@ class Gateway extends Worker {
 	 * @return TcpConnection
 	 */
 	public static function routerBind($workerConnections, $clientConnection, $cmd, $buffer) {
-		if (!isset($clientConnection->workerId) || !isset($workerConnections[$clientConnection->workerId])) {
-			$clientConnection->workerId = array_rand($workerConnections);
+		if (!isset($clientConnection->workerKey) || !isset($workerConnections[$clientConnection->workerKey])) {
+			$clientConnection->workerKey = array_rand($workerConnections);
 		}
-		return $workerConnections[$clientConnection->workerId];
+		return $workerConnections[$clientConnection->workerKey];
 	}
 
 }
