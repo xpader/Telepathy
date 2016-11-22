@@ -2,6 +2,7 @@
 
 namespace Eywa;
 
+use Eywa\Protocols\Gate;
 use Workerman\Connection\AsyncTcpConnection;
 use Workerman\Connection\TcpConnection;
 use Workerman\Lib\Timer;
@@ -10,12 +11,21 @@ use Workerman\Worker;
 class Gateway extends Worker {
 
 	/**
-	 * Gateway 服务地址配置
+	 * Gateway 向 Worker 开放的内部通讯地址
 	 * @var string
 	 */
 	public $lanIp = '127.0.0.1';
 	public $lanPort = 0;
 	public $startPort = 2000;
+
+	/**
+	 * 指定分配 worker 的路由算法回调
+	 *
+	 * 不指定时将随机分配
+	 *
+	 * @var callable
+	 */
+	public $workerRouter = null;
 
 	/**
 	 * 注册中心地址
@@ -30,7 +40,11 @@ class Gateway extends Worker {
 	public $secretKey = '';
 	public $name = 'Gateway';
 
+	//事件中转
 	public $_onWorkerStart = null;
+	public $_onWorkerStop = null;
+	public $_onConnect = null;
+	public $_onClose = null;
 
 	protected $clientConnections = [];
 	protected $uidConnections = [];
@@ -46,6 +60,10 @@ class Gateway extends Worker {
 		parent::__construct($socketName, $contextOption);
 
 		$this->gatewayPort = substr(strrchr($socketName,':'), 1);
+
+		if (!is_callable($this->workerRouter)) {
+			$this->workerRouter = ['\\Eywa\\Gateway', 'routerBind'];
+		}
 	}
 
 	public function run() {
@@ -54,9 +72,27 @@ class Gateway extends Worker {
 		$this->_onWorkerStart = $this->onWorkerStart;
 		$this->onWorkerStart = [$this, 'onWorkerStart'];
 
+		$this->_onWorkerStop = $this->onWorkerStop;
+		$this->onWorkerStop = [$this, 'onWorkerStop'];
+
+		//客户端事件
+		$this->_onConnect = $this->onConnect;
+		$this->onConnect = [$this, 'onClientConnect'];
+		$this->onMessage = [$this, 'onClientMessage'];
+		$this->_onClose = $this->onClose;
+		$this->onClose = [$this, 'onClientClose'];
+
+		//记录进程启动的时间
+		$this->startTime = time();
+
 		parent::run();
 	}
 
+	/**
+	 * Gateway 进程启动时
+	 *
+	 * @throws \Exception
+	 */
 	public function onWorkerStart() {
 		$this->lanPort = $this->startPort + $this->id;
 
@@ -79,6 +115,20 @@ class Gateway extends Worker {
 		}
 	}
 
+	/**
+	 * Gateway 进程停止时
+	 */
+	public function onWorkerStop() {
+		if (is_callable($this->_onWorkerStop)) {
+			call_user_func($this->_onWorkerStop, $this);
+		}
+	}
+
+	/**
+	 * Worker 连接上来时
+	 *
+	 * @param $connection
+	 */
 	public function onWorkerConnect($connection) {
 		if (TcpConnection::$defaultMaxSendBufferSize === $connection->maxSendBufferSize) {
 			$connection->maxSendBufferSize = 50 * 1024 * 1024;
@@ -87,15 +137,126 @@ class Gateway extends Worker {
 		$connection->authorized = $this->secretKey ? false : true;
 	}
 
-	public function onWorkerMessage($connection, $data) {
+	/**
+	 * Worker 发来消息时
+	 */
+	public function onWorkerMessage() {
 
 	}
 
-	public function onWorkerClose($connection)
-	{
+	/**
+	 * Worker 连接断开时
+	 *
+	 * @param $connection
+	 */
+	public function onWorkerClose($connection) {
 		if (isset($connection->key)) {
 			unset($this->workerConnections[$connection->key]);
 		}
+	}
+
+	/**
+	 * 客户端连接时
+	 * 
+	 * @param TcpConnection $connection
+	 */
+	public function onClientConnect($connection) {
+		//保存该连接的内部通讯的数据包报头，避免每次重新初始化
+		$connection->gatewayHeader = array(
+			'local_ip'      => ip2long($this->lanIp),
+			'local_port'    => $this->lanPort,
+			'client_ip'     => ip2long($connection->getRemoteIp()),
+			'client_port'   => $connection->getRemotePort(),
+			'gateway_port'  => $this->gatewayPort,
+			'connection_id' => $connection->id,
+			'flag'          => 0,
+		);
+
+		//该连接的心跳参数
+		$connection->pingNotResponseCount = -1;
+
+		//保存客户端连接 connection 对象
+		$this->clientConnections[$connection->id] = $connection;
+
+		//如果用户有自定义 onConnect 回调，则执行
+		if (is_callable($this->_onConnect)) {
+			call_user_func($this->_onConnect, $connection);
+		}
+
+		//链接到 Worker
+		$this->toWorker(Gate::CMD_ON_CONNECTION, $connection);
+	}
+
+	/**
+	 * 当客户端连接时将数据转发至 Worker
+	 * 
+	 * @param TcpConnection $connection
+	 * @param string $data
+	 */
+	public function onClientMessage($connection, $data) {
+		$connection->pingNotResponseCount = -1;
+		$this->toWorker(Gate::CMD_ON_MESSAGE, $connection, $data);
+	}
+
+	/**
+	 * 客户端关闭连接时
+	 * 
+	 * @param TcpConnection $connection
+	 */
+	public function onClientClose($connection) {
+		//通知 Worker
+		$this->toWorker(Gate::CMD_ON_CLOSE, $connection);
+		unset($this->clientConnections[$connection->id]);
+
+		//清理 uid 数据
+		if (!empty($connection->uid)) {
+			$uid = $connection->uid;
+			if (isset($this->uidConnections[$uid])) {
+				unset($this->uidConnections[$uid][$connection->id]);
+				unset($this->uidConnections[$uid]);
+			}
+		}
+		
+		//触发 onClose
+		if (is_callable($this->_onClose)) {
+			call_user_func($this->_onClose, $connection);
+		}
+	}
+
+	/**
+	 * 发送数据至 Worker
+	 *
+	 * @param int $cmd
+	 * @param TcpConnection $connection
+	 * @param string $data
+	 * @return bool
+	 */
+	protected function toWorker($cmd, $connection, $data='') {
+		$gatewayData = $connection->gatewayHeader;
+		$gatewayData['cmd'] = $cmd;
+		$gatewayData['data'] = $data;
+		$gatewayData['ext_data'] = '';
+
+		if ($this->workerConnections) {
+			$workerConnection = call_user_func($this->workerRouter, $this->workerConnections, $connection, $cmd, $data);
+			if ($workerConnection->send($gatewayData) === false) {
+				$msg = "SendBufferToWorker fail. May be the send buffer are overflow. See http://wiki.workerman.net/Error2";
+				$this->log($msg);
+				return false;
+			}
+		} else {
+			//gateway 启动后 1-2 秒内 SendBufferToWorker fail 是正常现象，因为与 worker 的连接还没建立起来，
+			//所以不记录日志，只是关闭连接
+			$timeDiff = 2;
+			if (time() - $this->startTime >= $timeDiff) {
+				$msg = 'SendBufferToWorker fail. The connections between Gateway and BusinessWorker are not ready. See http://wiki.workerman.net/Error3';
+				$this->log($msg);
+			}
+			$connection->destroy();
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -117,10 +278,27 @@ class Gateway extends Worker {
 	}
 
 	/**
-	 * 当注册中心断开时尝试重连
+	 * 注册中心连接断开事件
 	 */
 	public function onRegisterConnectionClose() {
+		//当注册中心断开时尝试重连
 		Timer::add(1, [$this, 'registerGateway'], null, false);
+	}
+
+	/**
+	 * client_id 与 worker 绑定
+	 *
+	 * @param array         $workerConnections
+	 * @param TcpConnection $clientConnection
+	 * @param int           $cmd
+	 * @param mixed         $buffer
+	 * @return TcpConnection
+	 */
+	public static function routerBind($workerConnections, $clientConnection, $cmd, $buffer) {
+		if (!isset($clientConnection->workerId) || !isset($workerConnections[$clientConnection->workerId])) {
+			$clientConnection->workerId = array_rand($workerConnections);
+		}
+		return $workerConnections[$clientConnection->workerId];
 	}
 
 }

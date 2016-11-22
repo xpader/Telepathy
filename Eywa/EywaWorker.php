@@ -8,6 +8,7 @@
 
 namespace Eywa;
 
+use Eywa\Protocols\Gate;
 use Workerman\Connection\AsyncTcpConnection;
 use Workerman\Connection\TcpConnection;
 use Workerman\Lib\Timer;
@@ -40,6 +41,21 @@ class EywaWorker extends Worker {
 	 * @var array
 	 */
 	protected $gatewayAddresses = [];
+	protected $gatewayConnections = [];
+
+	/**
+	 * 处于连接状态的 gateway 通讯地址
+	 *
+	 * @var array
+	 */
+	protected $connectingGatewayAddresses = array();
+
+	/**
+	 * 等待连接个 gateway 地址
+	 *
+	 * @var array
+	 */
+	protected $waitingConnectGatewayAddresses = array();
 
 	/**
 	 * 用于保持长连接的心跳时间间隔
@@ -62,12 +78,18 @@ class EywaWorker extends Worker {
 		parent::run();
 	}
 
+	/**
+	 * Worker 进程启动时
+	 */
 	public function onWorkerStart() {
 		if (!class_exists('\Protocols\Gate')) {
 			class_alias('Eywa\Protocols\Gate', 'Protocols\Gate');
 		}
 
 		$this->registerWorker();
+
+		//\Eywa\Lib\Gateway::setBusinessWorker($this);
+		//\GatewayWorker\Lib\Gateway::$secretKey = $this->secretKey;
 
 		//Todo: EventHandler
 
@@ -81,10 +103,53 @@ class EywaWorker extends Worker {
 		}
 	}
 
+	/**
+	 * Worker 进程停止时
+	 */
 	public function onWorkerStop() {
 		if (is_callable($this->_onWorkerStop)) {
 			call_user_func($this->_onWorkerStop, $this);
 		}
+	}
+
+	/**
+	 * Worker 进程重新载入（重新启动）
+	 *
+	 * @param Worker $worker
+	 */
+	public function onWorkerReload($worker) {
+		//防止进程立刻退出
+		$worker->reloadable = false;
+
+		//延迟 0.05 秒退出，避免 BusinessWorker 瞬间全部退出导致没有可用的 BusinessWorker 进程
+		Timer::add(0.05, array('Workerman\Worker', 'stopAll'));
+
+		//执行用户定义的 onWorkerReload 回调
+		if (is_callable($this->_onWorkerReload)) {
+			call_user_func($this->_onWorkerReload, $this);
+		}
+	}
+
+	/**
+	 * 当连接到 Gateway 时
+	 *
+	 * 注意是 Worker 连接到 Gateway 而不是 Gateway 连接到 Worker
+	 *
+	 * @param TcpConnection $connection
+	 */
+	public function onGatewayConnected($connection) {
+		$this->gatewayConnections[$connection->remoteAddress] = $connection;
+		unset($this->connectingGatewayAddresses[$connection->remoteAddress], $this->waitingConnectGatewayAddresses[$connection->remoteAddress]);
+	}
+
+	public function onGatewayMessage($connection, $data) {
+		$cmd = $data['cmd'];
+
+		if ($cmd === Gate::CMD_PING) {
+			return;
+		}
+
+		//Todo: here
 	}
 
 	/**
@@ -108,13 +173,15 @@ class EywaWorker extends Worker {
 	{
 		Timer::add(1, [$this, 'registerWorker'], null, false);
 	}
+
 	/**
 	 * 当注册中心发来消息时
 	 *
+	 * @param TcpConnection $connection
+	 * @param string $data
 	 * @return void
 	 */
-	public function onRegisterMessage($connection, $data)
-	{
+	public function onRegisterMessage($connection, $data) {
 		$data = @unserialize($data);
 
 		if (!isset($data['event'])) {
