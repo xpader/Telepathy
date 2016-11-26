@@ -18,6 +18,13 @@ $worker->onConnect = function($clientId) use ($worker) {
 $worker->onMessage = function($clientId, $data) use ($worker) {
 	echo "[Worker{$worker->id}][$clientId]Client message: $data\n";
 	Gateway::sendToClient($clientId, 'got: '.$data);
+
+	if ($data == 'set') {
+		$worker->route->last = date('Y-m-d H:i:s');
+		Gateway::sendToClient($clientId, 'set route: '.$worker->route->last);
+	} elseif ($data == 'get') {
+		Gateway::sendToClient($clientId, 'get route: '.$worker->route->last);
+	}
 };
 
 $worker->onClose = function($clientId) use ($worker) {

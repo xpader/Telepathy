@@ -9,6 +9,7 @@
 namespace Eywa;
 
 use Eywa\Lib\Context;
+use Eywa\Lib\Route;
 use Eywa\Protocols\Gate;
 use Workerman\Connection\AsyncTcpConnection;
 use Workerman\Connection\TcpConnection;
@@ -49,6 +50,13 @@ class EywaWorker extends Worker {
 	 * @var array
 	 */
 	public $gatewayConnections = [];
+
+	/**
+	 * 路由客户端
+	 *
+	 * @var Route
+	 */
+	public $route = null;
 
 	/**
 	 * 处于连接状态的 gateway 通讯地址
@@ -260,26 +268,33 @@ class EywaWorker extends Worker {
 		}
 
 		switch ($data['event']) {
-			case 'update_gateway_addresses':
-
-				if (!is_array($data['addresses'])) {
-					echo "Received bad data from Register. Addresses empty\n";
-					return;
+			case 'update_addresses':
+				if (isset($data['gateway_addresses'])) {
+					$address = $data['gateway_addresses'];
+					if (!is_array($address)) {
+						echo "Received bad data from Register: gateway_addresses empty\n";
+						return;
+					}
+					$this->gatewayAddresses = [];
+					foreach ($address as $addr) {
+						$this->gatewayAddresses[$addr] = 1;
+					}
+					$this->checkGatewayConnections($address);
 				}
 
-				$this->gatewayAddresses = array();
-
-				foreach ($data['addresses'] as $addr) {
-					$this->gatewayAddresses[$addr] = 1;
+				if (isset($data['router_addresses'])) {
+					if (!is_array($data['router_addresses'])) {
+						echo "Received bad data from Register: router_addresses empty\n";
+						return;
+					}
+					$this->route = new Route($data['router_addresses']);
 				}
-
-				$this->checkGatewayConnections($data['addresses']);
 				break;
 			default:
 				echo "Received unknow event:{$data['event']} from Register.\n";
 		}
 
-		echo "Worker {$this->id} onRegisterMessage:".join(',', $data['addresses'])."\n---------\n";
+		//echo "Worker {$this->id} onRegisterMessage: ".print_r($data, true)."\n---------\n";
 	}
 
 	/**
@@ -299,7 +314,7 @@ class EywaWorker extends Worker {
 	public function connectGateway($addr)
 	{
 		if (!isset($this->gatewayConnections[$addr]) && !isset($this->connectingGatewayAddresses[$addr]) && isset($this->gatewayAddresses[$addr])) {
-			echo "Worker {$this->id} connectGateway: $addr\n--------------\n";
+			//echo "Worker {$this->id} connectGateway: $addr\n--------------\n";
 			$gatewayConnection = new AsyncTcpConnection("Gate://$addr");
 			$gatewayConnection->remoteAddress = $addr;
 			$gatewayConnection->onConnect     = [$this, 'onGatewayConnected'];

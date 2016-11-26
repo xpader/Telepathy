@@ -4,103 +4,157 @@
  */
 namespace Eywa;
 
+use Workerman\Connection\AsyncTcpConnection;
+use Workerman\Lib\Timer;
 use Workerman\Worker;
 
 /**
  * Global data server.
  */
-class Router
-{
+class Router {
+
+	/**
+	 * 注册中心地址
+	 *
+	 * @var string
+	 */
+	public $registerAddress = '127.0.0.1:1236';
+
+	public $secretKey = '';
+
+	/**
+	 * 注册中心连接
+	 * @var null
+	 */
+	protected $registerConnection = null;
+
 	/**
 	 * Worker instance.
 	 * @var worker
 	 */
-	protected $_worker = null;
+	protected $worker = null;
+	
+	protected $lanAddr = '';
+
 	/**
 	 * All data.
 	 * @var array
 	 */
-	protected $_dataArray = array();
+	protected $dataArray = array();
+
 	/**
 	 * Construct.
-	 * @param string $ip
+	 * @param string $lanIp
 	 * @param int $port
 	 */
-	public function __construct($ip = '0.0.0.0', $port = 2207)
+	public function __construct($lanIp = '0.0.0.0', $port = 2207)
 	{
-		$worker = new Worker("frame://$ip:$port");
+		$this->lanAddr = $lanIp.':'.$port;
+		
+		$worker = new Worker("frame://{$this->lanAddr}");
 		$worker->count = 1;
 		$worker->name = 'Router';
-		$worker->onMessage = array($this, 'onMessage');
+		$worker->onWorkerStart = [$this, 'onWorkerStart'];
+		$worker->onMessage = [$this, 'onMessage'];
 		$worker->reloadable = false;
-		$this->_worker = $worker;
+		$this->worker = $worker;
+	}
+
+	public function onWorkerStart() {
+		$this->registerRouter();
 	}
 
 	/**
-	 * onMessage.
-	 * @param TcpConnection $connection
+	 * @param \Workerman\Connection\TcpConnection $connection
 	 * @param string $buffer
+	 * @return void
 	 */
-	public function onMessage($connection, $buffer)
-	{
-		if($buffer === 'ping')
-		{
+	public function onMessage($connection, $buffer) {
+		if($buffer === 'ping') {
 			return;
 		}
+		
 		$data = unserialize($buffer);
-		if(!$buffer || !isset($data['cmd']) || !isset($data['key']))
-		{
-			return $connection->close(serialize('bad request'));
+		if(!$buffer || !isset($data['cmd']) || !isset($data['key'])) {
+			$connection->close(serialize('bad request'));
+			return;
 		}
+		
 		$cmd = $data['cmd'];
 		$key = $data['key'];
-		switch($cmd)
-		{
+		
+		switch($cmd) {
 			case 'get':
-				if(!isset($this->_dataArray[$key]))
-				{
-					return $connection->send('N;');
+				if (!isset($this->dataArray[$key])) {
+					$connection->send('N;');
+					return;
 				}
-				return $connection->send(serialize($this->_dataArray[$key]));
+				$connection->send(serialize($this->dataArray[$key]));
 				break;
 			case 'set':
-				$this->_dataArray[$key] = $data['value'];
+				$this->dataArray[$key] = $data['value'];
 				$connection->send('b:1;');
 				break;
 			case 'add':
-				if(isset($this->_dataArray[$key]))
-				{
-					return $connection->send('b:0;');
+				if(isset($this->dataArray[$key])) {
+					$connection->send('b:0;');
+					return;
 				}
-				$this->_dataArray[$key] = $data['value'];
-				return $connection->send('b:1;');
+				$this->dataArray[$key] = $data['value'];
+				$connection->send('b:1;');
 				break;
 			case 'increment':
-				if(!isset($this->_dataArray[$key]))
-				{
-					return $connection->send('b:0;');
+				if (!isset($this->dataArray[$key])) {
+					$connection->send('b:0;');
+					return;
 				}
-				if(!is_numeric($this->_dataArray[$key]))
-				{
-					$this->_dataArray[$key] = 0;
+				if (!is_numeric($this->dataArray[$key])) {
+					$this->dataArray[$key] = 0;
 				}
-				$this->_dataArray[$key] = $this->_dataArray[$key]+$data['step'];
-				return $connection->send(serialize($this->_dataArray[$key]));
+				$this->dataArray[$key] = $this->dataArray[$key]+$data['step'];
+				$connection->send(serialize($this->dataArray[$key]));
 				break;
 			case 'cas':
-				if(isset($this->_dataArray[$key]) && md5(serialize($this->_dataArray[$key])) === $data['md5'])
+				if(isset($this->dataArray[$key]) && md5(serialize($this->dataArray[$key])) === $data['md5'])
 				{
-					$this->_dataArray[$key] = $data['value'];
-					return $connection->send('b:1;');
+					$this->dataArray[$key] = $data['value'];
+					$connection->send('b:1;');
+					return;
 				}
 				$connection->send('b:0;');
 				break;
 			case 'delete':
-				unset($this->_dataArray[$key]);
+				unset($this->dataArray[$key]);
 				$connection->send('b:1;');
 				break;
 			default:
 				$connection->close(serialize('bad cmd '. $cmd));
 		}
 	}
+
+	/**
+	 * 向注册中心注册本 Router
+	 */
+	public function registerRouter() {
+		$this->registerConnection = new AsyncTcpConnection("text://{$this->registerAddress}");
+
+		$data = [
+			'event' => 'router_connect',
+			'address' => $this->lanAddr,
+			'secret_key' => $this->secretKey,
+		];
+
+		$this->registerConnection->send(serialize($data));
+		$this->registerConnection->onClose = [$this, 'onRegisterConnectionClose'];
+		$this->registerConnection->connect();
+	}
+
+	/**
+	 * 注册中心连接断开事件
+	 */
+	public function onRegisterConnectionClose() {
+		//当注册中心断开时尝试重连
+		Timer::add(1, [$this, 'registerRouter'], null, false);
+	}
+
 }

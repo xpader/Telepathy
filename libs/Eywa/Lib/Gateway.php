@@ -8,6 +8,7 @@
 namespace Eywa\Lib;
 
 use Eywa\Protocols\Gate;
+use Exception;
 
 class Gateway {
 
@@ -55,6 +56,44 @@ class Gateway {
 		return self::command($clientId, Gate::CMD_SEND_TO_ONE, $message);
 	}
 
+	/**
+	 * 判断某个客户端连接是否在线
+	 *
+	 * @param int $clientId
+	 * @return bool
+	 */
+	public static function isOnline($clientId) {
+		$addressData = Context::clientIdToAddress($clientId);
+		if (!$addressData) {
+			return false;
+		}
+
+		$address = long2ip($addressData['local_ip']) .':'.$addressData['local_port'];
+		if (self::$worker && !isset(self::$worker->gatewayConnections[$address])) {
+			return false;
+		}
+
+		$gatewayData = Gate::$empty;
+		$gatewayData['cmd'] = Gate::CMD_IS_ONLINE;
+		$gatewayData['connection_id'] = $addressData['connection_id'];
+		return (bool)self::sendAndRecv($address, $gatewayData);
+	}
+
+	/**
+	 * 关闭某个客户端
+	 *
+	 * @param int $clientId
+	 * @return bool
+	 */
+	public static function closeClient($clientId) {
+		$addressData = Context::clientIdToAddress($clientId);
+		if (!$addressData) {
+			return false;
+		}
+		$address = long2ip($addressData['local_ip']).':'.$addressData['local_port'];
+		return self::kickAddress($address, $addressData['connection_id']);
+	}
+	
 	protected static function command($clientId, $cmd, $message, $extData='') {
 		$addressData  = Context::clientIdToAddress($clientId);
 
@@ -62,7 +101,7 @@ class Gateway {
 			return false;
 		}
 
-		$address       = long2ip($addressData['local_ip']) . ":{$addressData['local_port']}";
+		$address = long2ip($addressData['local_ip']) .':'.$addressData['local_port'];
 		$connectionId = $addressData['connection_id'];
 
 		$gatewayData                  = Gate::$empty;
@@ -75,6 +114,60 @@ class Gateway {
 		}
 
 		return self::sendToGateway($address, $gatewayData);
+	}
+
+	/**
+	 * 发送数据并返回
+	 *
+	 * @param int   $address
+	 * @param mixed $data
+	 * @return bool
+	 * @throws Exception
+	 */
+	protected static function sendAndRecv($address, $data) {
+		$buffer = Gate::encode($data);
+		self::$secretKey && $buffer = self::getAuthBuffer().$buffer;
+		
+		$client = stream_socket_client("tcp://$address", $errno, $errmsg, self::$connectTimeout);
+		if (!$client) {
+			throw new Exception("can not connect to tcp://$address $errmsg");
+		}
+
+		if (strlen($buffer) === stream_socket_sendto($client, $buffer)) {
+			$timeout = 5;
+			// 阻塞读
+			stream_set_blocking($client, 1);
+			// 1秒超时
+			stream_set_timeout($client, 1);
+			$all_buffer = '';
+			$time_start = microtime(true);
+			$pack_len = 0;
+			while (1) {
+				$buf = stream_socket_recvfrom($client, 655350);
+				if ($buf !== '' && $buf !== false) {
+					$all_buffer .= $buf;
+				} else {
+					if (feof($client)) {
+						throw new Exception("connection close tcp://$address");
+					} elseif (microtime(true) - $time_start > $timeout) {
+						break;
+					}
+					continue;
+				}
+				$recv_len = strlen($all_buffer);
+				if (!$pack_len && $recv_len >= 4) {
+					$pack_len= current(unpack('N', $all_buffer));
+				}
+				// 回复的数据都是以\n结尾
+				if (($pack_len && $recv_len >= $pack_len + 4) || microtime(true) - $time_start > $timeout) {
+					break;
+				}
+			}
+			// 返回结果
+			return unserialize(substr($all_buffer, 4));
+		} else {
+			throw new Exception("sendAndRecv($address, \$bufer) fail ! Can not send data!", 502);
+		}
 	}
 
 	/**
@@ -107,6 +200,20 @@ class Gateway {
 		$flag = self::$persistentConnection ? STREAM_CLIENT_PERSISTENT | STREAM_CLIENT_CONNECT : STREAM_CLIENT_CONNECT;
 		$client = stream_socket_client("tcp://$address", $errno, $errmsg, self::$connectTimeout, $flag);
 		return strlen($buffer) == stream_socket_sendto($client, $buffer);
+	}
+
+	/**
+	 * 踢掉某个网关的 socket
+	 *
+	 * @param string $address
+	 * @param int $connectionId
+	 * @return bool
+	 */
+	protected static function kickAddress($address, $connectionId) {
+		$gatewayData = Gate::$empty;
+		$gatewayData['cmd'] = Gate::CMD_KICK;
+		$gatewayData['connection_id'] = $connectionId;
+		return self::sendToGateway($address, $gatewayData);
 	}
 
 	/**

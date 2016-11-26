@@ -157,7 +157,8 @@ class Gateway extends Worker {
 				$workerInfo = json_decode($data['body'], true);
 				if ($workerInfo['secret_key'] !== $this->secretKey) {
 					echo "Gateway: Worker key does not match {$this->secretKey} !== {$this->secretKey}\n";
-					return $connection->close();
+					$connection->close();
+					return;
 				}
 				$connection->key = $connection->getRemoteIp() . ':' . $workerInfo['worker_key'];
 				$this->workerConnections[$connection->key] = $connection;
@@ -169,6 +170,17 @@ class Gateway extends Worker {
 					$this->clientConnections[$data['connection_id']]->send($data['body']);
 				}
 				break;
+			// 判断某个 client_id 是否在线 Gateway::isOnline($client_id)
+			case Gate::CMD_IS_ONLINE:
+				$buffer = serialize((int)isset($this->clientConnections[$data['connection_id']]));
+				$connection->send(pack('N', strlen($buffer)) . $buffer, true);
+				break;
+			// 关闭客户端连接，Gateway::closeClient($client_id);
+			case Gate::CMD_KICK:
+				if (isset($this->clientConnections[$data['connection_id']])) {
+					$this->clientConnections[$data['connection_id']]->destroy();
+				}
+				return;
 		}
 	}
 

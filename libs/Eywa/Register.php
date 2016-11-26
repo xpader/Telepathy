@@ -24,6 +24,7 @@ class Register extends Worker {
 
 	const TYPE_GATEWAY = 0;
 	const TYPE_WORKER = 1;
+	const TYPE_ROUTER = 2;
 
 	public function run() {
 		$this->onConnect = [$this, 'onConnect'];
@@ -69,6 +70,7 @@ class Register extends Worker {
 		switch ($event) {
 			//当 Gateway 连接上来时,注册 Gateway 并广播给所有 Workers
 			case 'gateway_connect':
+			case 'router_connect':
 				if (empty($data['address'])) {
 					echo "address not found\n";
 					$connection->close();
@@ -81,8 +83,13 @@ class Register extends Worker {
 					return;
 				}
 
-				$this->gatewayConnections[$connection->id] = $data['address'];
-				$this->broadcastAddresses();
+				if ($event === 'gateway_connect') {
+					$this->gatewayConnections[$connection->id] = $data['address'];
+					$this->broadcastAddresses(self::TYPE_GATEWAY);
+				} else {
+					$this->routerConnections[$connection->id] = $data['address'];
+					$this->broadcastAddresses(self::TYPE_ROUTER);
+				}
 				break;
 
 			//当 Worker 连接上来时,注册 Worker 并向将所有 Gateway 地址发给这个 Worker
@@ -94,7 +101,7 @@ class Register extends Worker {
 				}
 
 				$this->workerConnections[$connection->id] = $connection;
-				$this->broadcastAddresses($connection);
+				$this->broadcastAddresses(self::TYPE_WORKER, $connection);
 				break;
 
 			case 'ping':
@@ -105,7 +112,7 @@ class Register extends Worker {
 				$connection->close();
 		}
 
-//		echo 'Register onMessage: '.$raw."\n";
+		//echo 'Register onMessage: '.$raw."\n";
 //		echo 'Workers: '.join(',', array_keys($this->workerConnections))."\n";
 //		echo 'Gateway: '.join(',', $this->gatewayConnections)."\n---------------\n";
 	}
@@ -118,24 +125,40 @@ class Register extends Worker {
 	public function onClose($connection) {
 		if (isset($this->gatewayConnections[$connection->id])) {
 			unset($this->gatewayConnections[$connection->id]);
-			$this->broadcastAddresses();
-		}
-		if (isset($this->workerConnections[$connection->id])) {
+			$this->broadcastAddresses(self::TYPE_GATEWAY);
+		} elseif (isset($this->routerConnections[$connection->id])) {
+			//路由依赖哈希算法进行数据定位,路由服务数量理论上是不能变更的
+			//否则会导致部分或大量 uid,group 无法接收到数据,即使是一致性哈希也无法很好的解决这个问题
+			unset($this->routerConnections[$connection->id]);
+			$this->broadcastAddresses(self::TYPE_ROUTER);
+		} elseif (isset($this->workerConnections[$connection->id])) {
 			unset($this->workerConnections[$connection->id]);
 		}
 	}
 
 	/**
-	 * 向 BusinessWorker 广播 gateway 内部通讯地址
+	 * 向 Worker 广播 Gateway 与 Router 内部通讯地址
 	 *
+	 * @param int $type
 	 * @param \Workerman\Connection\TcpConnection $connection
 	 */
-	public function broadcastAddresses($connection = null)
+	public function broadcastAddresses($type, $connection = null)
 	{
-		$data = [
-			'event' => 'update_gateway_addresses',
-			'addresses' => array_unique(array_values($this->gatewayConnections)),
-		];
+		$data = ['event'=>'update_addresses'];
+		
+		switch ($type) {
+			case self::TYPE_GATEWAY:
+				$data['gateway_addresses'] = array_unique(array_values($this->gatewayConnections));
+				break;
+			case self::TYPE_ROUTER:
+				$data['router_addresses'] = array_unique(array_values($this->routerConnections));
+				break;
+			//worker 类型代表向此 worker 发送所有地址
+			case self::TYPE_WORKER:
+				$data['gateway_addresses'] = array_unique(array_values($this->gatewayConnections));
+				$data['router_addresses'] = array_unique(array_values($this->routerConnections));
+				break;
+		}
 
 		$raw = serialize($data);
 

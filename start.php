@@ -23,6 +23,7 @@ define('RUN_DIR', __DIR__);
 require_once __DIR__ . '/libs/Workerman/Autoloader.php';
 
 Worker::$pidFile = __DIR__.'/run/workerman.pid';
+Worker::$logFile = __DIR__.'/run/workerman.log';
 Worker::$stdoutFile = __DIR__.'/run/output.log';
 
 // 加载所有Applications/*/start.php，以便启动所有服务
