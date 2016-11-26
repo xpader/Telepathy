@@ -20,13 +20,13 @@ if (!extension_loaded('posix')) {
 define('GLOBAL_START', 1);
 define('RUN_DIR', __DIR__);
 
-require_once __DIR__ . '/Workerman/Autoloader.php';
+require_once __DIR__ . '/libs/Workerman/Autoloader.php';
 
-Worker::$pidFile = __DIR__.'/workerman.pid';
-Worker::$stdoutFile = __DIR__.'/output.log';
+Worker::$pidFile = __DIR__.'/run/workerman.pid';
+Worker::$stdoutFile = __DIR__.'/run/output.log';
 
 // 加载所有Applications/*/start.php，以便启动所有服务
-foreach (glob(__DIR__.'/Applications/*/start*.php') as $start_file) {
+foreach (glob(__DIR__.'/apps/*/start*.php') as $start_file) {
     require_once $start_file;
 }
 

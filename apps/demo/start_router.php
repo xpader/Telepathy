@@ -8,7 +8,7 @@
 use Eywa\Router;
 use Workerman\Worker;
 
-require_once __DIR__ . '/../../Workerman/Autoloader.php';
+require_once __DIR__ . '/../../libs/Workerman/Autoloader.php';
 
 $router = new Router('127.0.0.1', 2999);
 $router->registerAddress = '127.0.0.1:1236';
