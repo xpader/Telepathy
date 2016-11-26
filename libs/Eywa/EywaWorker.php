@@ -42,7 +42,13 @@ class EywaWorker extends Worker {
 	 * @var array
 	 */
 	protected $gatewayAddresses = [];
-	protected $gatewayConnections = [];
+
+	/**
+	 * 所有 gateway 的连接
+	 * 因为 gateway 连接需要与 gateway 客户端在 worker 内共享，所以需设置为公开属性
+	 * @var array
+	 */
+	public $gatewayConnections = [];
 
 	/**
 	 * 处于连接状态的 gateway 通讯地址
@@ -89,8 +95,9 @@ class EywaWorker extends Worker {
 
 		$this->registerWorker();
 
-		//\Eywa\Lib\Gateway::setBusinessWorker($this);
-		//\GatewayWorker\Lib\Gateway::$secretKey = $this->secretKey;
+		//将 Gateway 置于 Worker 内模式
+		\Eywa\Lib\Gateway::setWorker($this);
+		\Eywa\Lib\Gateway::$secretKey = $this->secretKey;
 
 		//Todo: EventHandler
 

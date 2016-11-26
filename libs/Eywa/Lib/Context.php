@@ -58,38 +58,6 @@ class Context {
 	public static $connection_id;
 
 	/**
-	 * 旧的session
-	 *
-	 * @var string
-	 */
-	public static $old_session;
-
-	/**
-	 * 编码 session
-	 *
-	 * @param mixed $session_data
-	 * @return string
-	 */
-	public static function sessionEncode($session_data = '')
-	{
-		if ($session_data !== '') {
-			return serialize($session_data);
-		}
-		return '';
-	}
-
-	/**
-	 * 解码 session
-	 *
-	 * @param string $session_buffer
-	 * @return mixed
-	 */
-	public static function sessionDecode($session_buffer)
-	{
-		return unserialize($session_buffer);
-	}
-
-	/**
 	 * 清除上下文
 	 *
 	 * @return void
@@ -118,12 +86,12 @@ class Context {
 	 *
 	 * @param string $client_id
 	 * @return array
-	 * @throws Exception
+	 * @throws \Exception
 	 */
 	public static function clientIdToAddress($client_id)
 	{
 		if (strlen($client_id) !== 20) {
-			echo new Exception("client_id $client_id is invalid");
+			echo new \Exception("client_id $client_id is invalid");
 			return false;
 		}
 		return unpack('Nlocal_ip/nlocal_port/Nconnection_id', pack('H*', $client_id));

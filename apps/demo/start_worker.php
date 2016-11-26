@@ -1,6 +1,7 @@
 <?php
 
 use Eywa\EywaWorker;
+use Eywa\Lib\Gateway;
 use Workerman\Worker;
 
 require_once __DIR__ . '/../../libs/Workerman/Autoloader.php';
@@ -10,15 +11,16 @@ $worker = new EywaWorker();
 $worker->count = 4;
 $worker->registerAddress = '127.0.0.1:1236';
 
-$worker->onConnect = function($connection) use ($worker) {
+$worker->onConnect = function($clientId) use ($worker) {
 	echo "[Worker{$worker->id}] Client connected\n";
 };
 
-$worker->onMessage = function($connection, $data) use ($worker) {
-	echo "[Worker{$worker->id}]Client message: $data\n";
+$worker->onMessage = function($clientId, $data) use ($worker) {
+	echo "[Worker{$worker->id}][$clientId]Client message: $data\n";
+	Gateway::sendToClient($clientId, 'got: '.$data);
 };
 
-$worker->onClose = function($connection) use ($worker) {
+$worker->onClose = function($clientId) use ($worker) {
 	echo "[Worker{$worker->id}] Client closed\n";
 };
 

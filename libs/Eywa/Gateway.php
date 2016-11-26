@@ -162,7 +162,13 @@ class Gateway extends Worker {
 				$connection->key = $connection->getRemoteIp() . ':' . $workerInfo['worker_key'];
 				$this->workerConnections[$connection->key] = $connection;
 				$connection->authorized = true;
-				return;
+				break;
+			// 向某客户端发送数据，Gateway::sendToClient($client_id, $message);
+			case Gate::CMD_SEND_TO_ONE:
+				if (isset($this->clientConnections[$data['connection_id']])) {
+					$this->clientConnections[$data['connection_id']]->send($data['body']);
+				}
+				break;
 		}
 	}
 
